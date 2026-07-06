@@ -166,3 +166,32 @@ button {
 .milkdown .cm-activeLineGutter {
   background: transparent;
 }
+
+/* ---- LaTeX (math) blocks ----
+   Identified by their rendered KaTeX preview, so plain code/mermaid blocks are
+   unaffected. Borderless, and the source is hidden until the block is focused. */
+.milkdown .milkdown-code-block:has(.preview .katex) {
+  border: none;
+  background: transparent;
+}
+
+/* Preview-only mode normally sets `display:none` on the source, which would
+   make it impossible to focus. Keep it in the layout but collapsed instead, so
+   clicking the preview (or arrow-navigating in) can still land the cursor. */
+.milkdown .milkdown-code-block:has(.preview .katex) .codemirror-host.hidden {
+  display: block !important;
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Cursor on the block (typing/editing) → reveal the source, put focus there. */
+.milkdown
+  .milkdown-code-block:has(.preview .katex):focus-within
+  .codemirror-host.hidden {
+  max-height: none;
+  overflow: visible;
+  opacity: 1;
+  pointer-events: auto;
+}
