@@ -1,6 +1,7 @@
 <script setup>
 import { onMounted, onBeforeUnmount, ref } from 'vue'
 import { Crepe } from '@milkdown/crepe'
+import { emojiPlugins } from '../lib/emojiPlugin.js'
 
 const props = defineProps({
   // Initial markdown. Only read once on mount — the editor owns state after that.
@@ -21,6 +22,9 @@ onMounted(async () => {
       },
     },
   })
+
+  // Add markdown emoji support (`:dart:` autocomplete + live rendering).
+  crepe.editor.use(emojiPlugins)
 
   crepe.on((listener) => {
     listener.markdownUpdated((_ctx, markdown) => {
