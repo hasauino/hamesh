@@ -155,6 +155,33 @@ button {
   margin-top: 0;
 }
 
+/* ---- Continuous-document feel (Typora-style) ----
+   Crepe's BlockEdit feature is left ON so the slash "/" menu still works, but
+   we hide its drag/add handle — the ⠿ grip in the left gutter is the main
+   thing that made the notes read as isolated blocks rather than one flowing
+   file. Copy/cut/paste still round-trip through the markdown source. */
+.milkdown .milkdown-block-handle {
+  display: none !important;
+}
+
+/* Tighten the heading rhythm. Crepe's large per-heading `margin-top` (32px on
+   h1) makes each section feel like a separate card; halving it lets text flow
+   like a plain document while keeping a legible hierarchy. */
+.milkdown .ProseMirror h1 {
+  margin-top: 18px;
+}
+.milkdown .ProseMirror h2 {
+  margin-top: 16px;
+}
+.milkdown .ProseMirror h3 {
+  margin-top: 14px;
+}
+.milkdown .ProseMirror h4,
+.milkdown .ProseMirror h5,
+.milkdown .ProseMirror h6 {
+  margin-top: 12px;
+}
+
 /* ---- Code blocks: soft rounded border, no active-line highlight ---- */
 .milkdown .milkdown-code-block {
   border: 1px solid var(--border-subtle);
