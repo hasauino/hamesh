@@ -1,10 +1,10 @@
-import { rowMinutes, formatDuration, totalMinutes } from './time.js'
+import { rowMinutes, formatDuration, totalMinutes, formatTime } from './time.js'
 
 /**
  * Build the full markdown document: a GitHub-style time table followed by the
  * notes markdown. Mirrors the layout of the original log.md.
  */
-export function buildMarkdown({ date, rows, notes }) {
+export function buildMarkdown({ date, rows, notes, clockFormat = '24h' }) {
   const lines = []
 
   if (date) lines.push(`# ${date}`, '')
@@ -16,8 +16,10 @@ export function buildMarkdown({ date, rows, notes }) {
     // Skip completely empty rows to keep the export clean.
     if (!r.start && !r.end && !r.comment) continue
     const dur = formatDuration(rowMinutes(r.start, r.end))
+    const start = formatTime(r.start, clockFormat)
+    const end = formatTime(r.end, clockFormat)
     lines.push(
-      `| ${r.start || ''} | ${r.end || ''} | ${dur} | ${(r.comment || '').replace(/\|/g, '\\|')} |`,
+      `| ${start} | ${end} | ${dur} | ${(r.comment || '').replace(/\|/g, '\\|')} |`,
     )
   }
 

@@ -5,12 +5,53 @@ import {
   formatDuration,
   formatDecimalHours,
   totalMinutes,
+  formatTime,
+  parseFlexibleTime,
 } from '../lib/time.js'
 
 // rows is v-model bound: array of { start, end, comment }
 const rows = defineModel({ type: Array, required: true })
 
+const props = defineProps({
+  // '24h' or '12h' — controls only how native time inputs are displayed.
+  // The stored value is always 24h "HH:MM" regardless.
+  clockFormat: { type: String, default: '24h' },
+})
+
 const total = computed(() => totalMinutes(rows.value))
+
+const placeholder = computed(() =>
+  props.clockFormat === '12h' ? 'h:mm am' : 'hh:mm',
+)
+
+function display(value) {
+  return formatTime(value, props.clockFormat)
+}
+
+// Commit a typed value: parse loosely, store canonical 24h, then normalize the
+// text back to the configured display format (reverting unparseable input).
+function commit(row, field, event) {
+  const raw = event.target.value
+  if (raw.trim() === '') {
+    row[field] = ''
+  } else {
+    const parsed = parseFlexibleTime(raw)
+    if (parsed !== null) row[field] = parsed
+  }
+  event.target.value = display(row[field])
+}
+
+function nowHHMM() {
+  const d = new Date()
+  return `${String(d.getHours()).padStart(2, '0')}:${String(
+    d.getMinutes(),
+  ).padStart(2, '0')}`
+}
+
+// Stamp the current time into a field.
+function stampNow(row, field) {
+  row[field] = nowHHMM()
+}
 
 function durationFor(row) {
   return formatDuration(rowMinutes(row.start, row.end))
@@ -49,10 +90,48 @@ async function copyTotal() {
       <tbody>
         <tr v-for="(row, i) in rows" :key="i">
           <td>
-            <input type="time" v-model="row.start" step="60" />
+            <div class="time-cell">
+              <input
+                type="text"
+                class="time-input"
+                inputmode="numeric"
+                :placeholder="placeholder"
+                :value="display(row.start)"
+                @change="commit(row, 'start', $event)"
+                @keyup.enter="$event.target.blur()"
+              />
+              <button
+                class="clock-btn"
+                title="Fill current time"
+                @click="stampNow(row, 'start')"
+              >
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none"
+                  stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                  stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+              </button>
+            </div>
           </td>
           <td>
-            <input type="time" v-model="row.end" step="60" />
+            <div class="time-cell">
+              <input
+                type="text"
+                class="time-input"
+                inputmode="numeric"
+                :placeholder="placeholder"
+                :value="display(row.end)"
+                @change="commit(row, 'end', $event)"
+                @keyup.enter="$event.target.blur()"
+              />
+              <button
+                class="clock-btn"
+                title="Fill current time"
+                @click="stampNow(row, 'end')"
+              >
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none"
+                  stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                  stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+              </button>
+            </div>
           </td>
           <td class="dur">{{ durationFor(row) }}</td>
           <td>
@@ -115,7 +194,41 @@ td {
 }
 
 .col-time {
-  width: 6.5rem;
+  width: 8.75rem;
+}
+
+.time-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.1rem;
+}
+.time-input {
+  flex: 1;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.clock-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--faint);
+  cursor: pointer;
+  padding: 0.3rem;
+  border-radius: 5px;
+  opacity: 0;
+  transition: opacity 0.12s, color 0.12s, background 0.12s;
+}
+tr:hover .clock-btn,
+.time-cell:focus-within .clock-btn {
+  opacity: 1;
+}
+.clock-btn:hover {
+  color: var(--text);
+  background: var(--hover);
 }
 .col-dur {
   width: 6rem;

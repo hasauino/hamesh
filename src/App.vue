@@ -6,6 +6,7 @@ import { buildMarkdown, downloadMarkdown } from './lib/exportMarkdown.js'
 
 const STORAGE_KEY = 'notes-app-v1'
 const THEME_KEY = 'notes-theme'
+const CLOCK_KEY = 'notes-clock'
 
 function todayLabel() {
   const d = new Date()
@@ -55,6 +56,13 @@ function toggleTheme() {
 }
 applyTheme()
 
+// ---- Clock format (24h default, configurable) ----
+const clockFormat = ref(localStorage.getItem(CLOCK_KEY) || '24h')
+function toggleClock() {
+  clockFormat.value = clockFormat.value === '24h' ? '12h' : '24h'
+  localStorage.setItem(CLOCK_KEY, clockFormat.value)
+}
+
 // ---- Persistence ----
 let saveTimer = null
 function persist() {
@@ -83,7 +91,12 @@ function showFlash(msg) {
 function currentMarkdown() {
   // Pull the freshest notes straight from the editor.
   const md = editorRef.value?.getMarkdown() ?? notes.value
-  return buildMarkdown({ date: state.date, rows: state.rows, notes: md })
+  return buildMarkdown({
+    date: state.date,
+    rows: state.rows,
+    notes: md,
+    clockFormat: clockFormat.value,
+  })
 }
 
 async function copyAll() {
@@ -121,6 +134,12 @@ function newDay() {
         <button @click="copyAll" title="Copy full markdown to clipboard">Copy</button>
         <button @click="downloadAll" title="Download as .md file">Export</button>
         <button @click="newDay" title="Clear and start a new day">New day</button>
+        <button
+          @click="toggleClock"
+          :title="`Clock display: ${clockFormat}. Click for ${clockFormat === '24h' ? '12h' : '24h'}.`"
+        >
+          {{ clockFormat }}
+        </button>
         <button class="icon" @click="toggleTheme" :title="`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`">
           {{ theme === 'light' ? '☾' : '☀' }}
         </button>
@@ -129,7 +148,7 @@ function newDay() {
 
     <main>
       <section class="panel">
-        <TimeTable v-model="state.rows" />
+        <TimeTable v-model="state.rows" :clock-format="clockFormat" />
       </section>
 
       <section class="panel notes-panel">

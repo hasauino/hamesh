@@ -25,6 +25,70 @@ export function rowMinutes(start, end) {
   return diff
 }
 
+/**
+ * Parse loosely-typed user input into a canonical 24h "HH:MM" string, or null.
+ * Accepts: "13:33", "9:05", "0905", "905", "9", "1305", "9:05pm", "9pm",
+ * "12am" (-> 00:00), "12pm" (-> 12:00).
+ */
+export function parseFlexibleTime(input) {
+  if (input === null || input === undefined) return null
+  let s = String(input).trim().toLowerCase()
+  if (s === '') return null
+
+  let pm = null
+  if (s.includes('am')) {
+    pm = false
+    s = s.replace(/am/g, '')
+  } else if (s.includes('pm')) {
+    pm = true
+    s = s.replace(/pm/g, '')
+  }
+  s = s.trim()
+
+  let h, m
+  if (s.includes(':')) {
+    const [hp, mp] = s.split(':')
+    h = parseInt(hp, 10)
+    m = parseInt(mp, 10)
+  } else {
+    const digits = s.replace(/\D/g, '')
+    if (digits === '') return null
+    if (digits.length <= 2) {
+      h = parseInt(digits, 10)
+      m = 0
+    } else if (digits.length === 3) {
+      h = parseInt(digits.slice(0, 1), 10)
+      m = parseInt(digits.slice(1), 10)
+    } else {
+      h = parseInt(digits.slice(0, 2), 10)
+      m = parseInt(digits.slice(2, 4), 10)
+    }
+  }
+
+  if (Number.isNaN(h) || Number.isNaN(m)) return null
+  if (pm === true && h < 12) h += 12 // 1pm -> 13, 12pm stays 12
+  if (pm === false && h === 12) h = 0 // 12am -> 00
+  if (h > 23 || m > 59) return null
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+}
+
+/**
+ * Format a canonical "HH:MM" value for display in the configured clock format.
+ * '24h' -> "13:33", '12h' -> "1:33 PM". Empty/invalid -> "".
+ */
+export function formatTime(hhmm, clockFormat = '24h') {
+  const mins = parseTime(hhmm)
+  if (mins === null) return ''
+  const h = Math.floor(mins / 60)
+  const m = mins % 60
+  if (clockFormat === '12h') {
+    const period = h < 12 ? 'AM' : 'PM'
+    const h12 = h % 12 === 0 ? 12 : h % 12
+    return `${h12}:${String(m).padStart(2, '0')} ${period}`
+  }
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+}
+
 /** Format minutes as "H:MM" (e.g. 185 -> "3:05"). */
 export function formatDuration(minutes) {
   if (minutes === null || minutes === undefined) return ''
