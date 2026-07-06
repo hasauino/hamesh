@@ -1,8 +1,9 @@
 <script setup>
-import { ref, reactive, watch, computed, onMounted } from 'vue'
+import { ref, reactive, watch, computed, onMounted, onBeforeUnmount } from 'vue'
 import TimeTable from './components/TimeTable.vue'
 import NotesEditor from './components/NotesEditor.vue'
 import Calendar from './components/Calendar.vue'
+import SettingsMenu from './components/SettingsMenu.vue'
 import { buildMarkdown, downloadMarkdown } from './lib/exportMarkdown.js'
 
 const STORAGE_KEY = 'notes-app-days-v1'
@@ -24,11 +25,7 @@ function labelForIso(iso) {
 }
 
 function blankRows() {
-  return [
-    { start: '', end: '', comment: '' },
-    { start: '', end: '', comment: '' },
-    { start: '', end: '', comment: '' },
-  ]
+  return [{ start: '', end: '', comment: '' }]
 }
 
 function blankDay(iso) {
@@ -104,24 +101,23 @@ function openDay(iso) {
   view.value = 'log'
 }
 
+// ---- Settings drawer ----
+const settingsOpen = ref(false)
+
 // ---- Theme ----
 const theme = ref(localStorage.getItem(THEME_KEY) || 'light')
 function applyTheme() {
   document.documentElement.setAttribute('data-theme', theme.value)
 }
-function toggleTheme() {
-  theme.value = theme.value === 'light' ? 'dark' : 'light'
-  localStorage.setItem(THEME_KEY, theme.value)
+watch(theme, (v) => {
+  localStorage.setItem(THEME_KEY, v)
   applyTheme()
-}
+})
 applyTheme()
 
 // ---- Clock format (24h default, configurable) ----
 const clockFormat = ref(localStorage.getItem(CLOCK_KEY) || '24h')
-function toggleClock() {
-  clockFormat.value = clockFormat.value === '24h' ? '12h' : '24h'
-  localStorage.setItem(CLOCK_KEY, clockFormat.value)
-}
+watch(clockFormat, (v) => localStorage.setItem(CLOCK_KEY, v))
 
 // ---- Persistence ----
 let saveTimer = null
@@ -179,38 +175,67 @@ function downloadAll() {
 function newDay() {
   openDay(isoOf())
 }
+
+// Repurpose the browser's Save shortcut (Ctrl/Cmd+S) to export the log instead.
+function onSaveShortcut(e) {
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 's') {
+    e.preventDefault()
+    downloadAll()
+  }
+}
+onMounted(() => window.addEventListener('keydown', onSaveShortcut))
+onBeforeUnmount(() => window.removeEventListener('keydown', onSaveShortcut))
 </script>
 
 <template>
   <div class="app">
     <header class="topbar">
       <div class="brand">
-        <span class="dot"></span>
         <input class="date-input" v-model="current.label" spellcheck="false" />
       </div>
       <div class="actions">
         <span class="flash" v-if="flash">{{ flash }}</span>
-        <button @click="copyAll" title="Copy full markdown to clipboard">Copy</button>
-        <button @click="downloadAll" title="Download as .md file">Export</button>
-        <button @click="newDay" title="Start today's log (keeps other days)">New day</button>
+        <button class="icon" @click="copyAll" title="Copy full markdown to clipboard" aria-label="Copy">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9"
+            width="11" height="11" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h10" /></svg>
+        </button>
+        <button class="icon" @click="downloadAll" title="Export as .md file" aria-label="Export">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12" /><path
+            d="m8 7 4-4 4 4" /><path d="M8 11H6a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2h-2" /></svg>
+        </button>
+        <button class="icon" @click="newDay" title="Start today's log (keeps other days)" aria-label="New day">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14" /><path
+            d="M5 12h14" /></svg>
+        </button>
         <button
+          class="icon"
           :class="{ active: view === 'calendar' }"
           @click="view = view === 'calendar' ? 'log' : 'calendar'"
           title="Browse all days"
+          aria-label="Days"
         >
-          Days
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4"
+            width="18" height="18" rx="2" /><path d="M3 10h18" /><path d="M8 2v4" /><path d="M16 2v4" /></svg>
         </button>
-        <button
-          @click="toggleClock"
-          :title="`Clock display: ${clockFormat}. Click for ${clockFormat === '24h' ? '12h' : '24h'}.`"
-        >
-          {{ clockFormat }}
-        </button>
-        <button class="icon" @click="toggleTheme" :title="`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`">
-          {{ theme === 'light' ? '☾' : '☀' }}
+        <button class="icon" @click="settingsOpen = true" title="Settings" aria-label="Settings">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12"
+            r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65
+            1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65
+            1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0
+            0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1
+            2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65
+            0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33
+            1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" /></svg>
         </button>
       </div>
     </header>
+
+    <SettingsMenu v-model:open="settingsOpen" v-model:theme="theme" v-model:clockFormat="clockFormat" />
 
     <main v-show="view === 'calendar'">
       <Calendar
@@ -257,26 +282,21 @@ function newDay() {
 .brand {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
   min-width: 0;
-}
-.dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--text);
-  flex: none;
 }
 .date-input {
   border: none;
   background: transparent;
   color: var(--text);
   font: inherit;
-  font-weight: 600;
-  font-size: 1rem;
-  padding: 0.3rem 0.4rem;
+  font-weight: 700;
+  font-size: 1.6rem;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  padding: 0.2rem 0.4rem;
+  margin-left: -0.4rem;
   border-radius: 6px;
-  width: 15rem;
+  width: 20rem;
   max-width: 100%;
 }
 .date-input:focus {
@@ -305,8 +325,11 @@ function newDay() {
   color: var(--text);
 }
 .actions button.icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-size: 1rem;
-  padding: 0.4rem 0.55rem;
+  padding: 0.4rem 0.5rem;
 }
 .actions button.active {
   color: #ff3b30;

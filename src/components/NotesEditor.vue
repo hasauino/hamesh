@@ -19,7 +19,7 @@ onMounted(async () => {
     defaultValue: props.initialValue,
     featureConfigs: {
       [Crepe.Feature.Placeholder]: {
-        text: 'Write your notes… type “/” for commands',
+        text: '',
       },
     },
   })
