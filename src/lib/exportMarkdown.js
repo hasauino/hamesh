@@ -1,36 +1,14 @@
-import { rowMinutes, formatDuration, totalMinutes, formatTime } from './time.js'
-
 /**
- * Build the full markdown document: a GitHub-style time table followed by the
- * notes markdown. Mirrors the layout of the original log.md.
+ * Build the full markdown document: a title followed by the notes markdown.
+ * Time-log tables now live inside the notes themselves (as widgets that
+ * serialize to GFM tables), so there's nothing to merge in separately.
  */
-export function buildMarkdown({ date, rows, notes, clockFormat = '24h' }) {
+export function buildMarkdown({ date, notes }) {
   const lines = []
-
   if (date) lines.push(`# ${date}`, '')
 
-  lines.push('| Start | End | Duration | Comment |')
-  lines.push('| ----- | --- | -------- | ------- |')
-
-  for (const r of rows) {
-    // Skip completely empty rows to keep the export clean.
-    if (!r.start && !r.end && !r.comment) continue
-    const dur = formatDuration(rowMinutes(r.start, r.end))
-    const start = formatTime(r.start, clockFormat)
-    const end = formatTime(r.end, clockFormat)
-    lines.push(
-      `| ${start} | ${end} | ${dur} | ${(r.comment || '').replace(/\|/g, '\\|')} |`,
-    )
-  }
-
-  const total = formatDuration(totalMinutes(rows))
-  lines.push(`|  | **Total** | **${total}** |  |`)
-  lines.push('')
-
   const trimmedNotes = (notes || '').trim()
-  if (trimmedNotes) {
-    lines.push(trimmedNotes, '')
-  }
+  if (trimmedNotes) lines.push(trimmedNotes, '')
 
   return lines.join('\n')
 }

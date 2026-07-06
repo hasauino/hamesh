@@ -182,6 +182,11 @@ button {
   margin-top: 12px;
 }
 
+/* ---- Time-log widget: give the inline table room to breathe ---- */
+.milkdown .time-log-widget {
+  margin: 1.25rem 0;
+}
+
 /* ---- Code blocks: soft rounded border, no active-line highlight ---- */
 .milkdown .milkdown-code-block {
   border: 1px solid var(--border-subtle);

@@ -1,13 +1,15 @@
 <script setup>
 import { ref, reactive, watch, computed, onMounted, onBeforeUnmount } from 'vue'
-import TimeTable from './components/TimeTable.vue'
 import NotesEditor from './components/NotesEditor.vue'
 import Calendar from './components/Calendar.vue'
 import SettingsMenu from './components/SettingsMenu.vue'
 import { buildMarkdown, downloadMarkdown } from './lib/exportMarkdown.js'
+import { buildTimeLogTableMarkdown } from './lib/timeLogNode.js'
+import { clockFormat as sharedClockFormat } from './lib/settings.js'
 
-const STORAGE_KEY = 'notes-app-days-v1'
-const OLD_STORAGE_KEY = 'notes-app-v1'
+const STORAGE_KEY = 'notes-app-days-v2'
+const V1_STORAGE_KEY = 'notes-app-days-v1' // time table stored separately from notes
+const OLD_STORAGE_KEY = 'notes-app-v1' // original single-day format
 const THEME_KEY = 'notes-theme'
 const CLOCK_KEY = 'notes-clock'
 
@@ -24,43 +26,59 @@ function labelForIso(iso) {
   return `${iso} · ${weekday}`
 }
 
-function blankRows() {
-  return [{ start: '', end: '', comment: '' }]
-}
-
 function blankDay(iso) {
-  return { label: labelForIso(iso), rows: blankRows(), notes: '' }
+  return { label: labelForIso(iso), notes: '' }
 }
 
 function isEmptyDay(day) {
   if (!day) return true
-  if (day.notes && day.notes.trim()) return false
-  return (day.rows || []).every((r) => !r.start && !r.end && !r.comment)
+  return !(day.notes && day.notes.trim())
+}
+
+// Fold a legacy day's separate `rows` into its notes markdown as a time-log
+// table, which the editor re-hydrates into the interactive widget on load.
+function foldRowsIntoNotes(day) {
+  const rows = day.rows || []
+  const hasRows = rows.some((r) => r.start || r.end || r.comment)
+  let notes = day.notes || ''
+  if (hasRows) {
+    const clock = localStorage.getItem(CLOCK_KEY) || '24h'
+    const table = buildTimeLogTableMarkdown(rows, clock)
+    notes = notes.trim() ? `${table}\n\n${notes}` : table
+  }
+  return { label: day.label, notes }
 }
 
 // ---- Load persisted state (synchronously, before the editor mounts) ----
-// Storage shape: { days: { "YYYY-MM-DD": { label, rows, notes } }, current }
+// Storage shape: { days: { "YYYY-MM-DD": { label, notes } }, current }
 function loadStore() {
   try {
     const s = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null')
     if (s && s.days) return s
   } catch {}
-  // Migrate the previous single-day format, if present.
+  // Migrate the previous multi-day format (rows stored apart from notes).
+  try {
+    const v1 = JSON.parse(localStorage.getItem(V1_STORAGE_KEY) || 'null')
+    if (v1 && v1.days) {
+      const days = {}
+      for (const [iso, day] of Object.entries(v1.days)) {
+        days[iso] = foldRowsIntoNotes(day)
+      }
+      return { days, current: v1.current }
+    }
+  } catch {}
+  // Migrate the original single-day format, if present.
   try {
     const old = JSON.parse(localStorage.getItem(OLD_STORAGE_KEY) || 'null')
     if (old) {
       const m = String(old.date || '').match(/\d{4}-\d{2}-\d{2}/)
       const iso = m ? m[0] : isoOf()
-      return {
-        days: {
-          [iso]: {
-            label: old.date || labelForIso(iso),
-            rows: old.rows?.length ? old.rows : blankRows(),
-            notes: old.notes ?? '',
-          },
-        },
-        current: iso,
-      }
+      const day = foldRowsIntoNotes({
+        label: old.date || labelForIso(iso),
+        rows: old.rows,
+        notes: old.notes,
+      })
+      return { days: { [iso]: day }, current: iso }
     }
   } catch {}
   const iso = isoOf()
@@ -116,8 +134,17 @@ watch(theme, (v) => {
 applyTheme()
 
 // ---- Clock format (24h default, configurable) ----
+// Mirror into the shared ref so time-log widgets (mounted outside the component
+// tree) pick up the setting.
 const clockFormat = ref(localStorage.getItem(CLOCK_KEY) || '24h')
-watch(clockFormat, (v) => localStorage.setItem(CLOCK_KEY, v))
+watch(
+  clockFormat,
+  (v) => {
+    localStorage.setItem(CLOCK_KEY, v)
+    sharedClockFormat.value = v
+  },
+  { immediate: true },
+)
 
 // ---- Persistence ----
 let saveTimer = null
@@ -149,9 +176,7 @@ function currentMarkdown() {
   const md = editorRef.value?.getMarkdown() ?? current.value.notes
   return buildMarkdown({
     date: current.value.label,
-    rows: current.value.rows,
     notes: md,
-    clockFormat: clockFormat.value,
   })
 }
 
@@ -249,10 +274,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onSaveShortcut))
 
     <main v-show="view === 'log'">
       <section class="panel">
-        <TimeTable v-model="current.rows" :clock-format="clockFormat" />
-      </section>
-
-      <section class="panel notes-panel">
         <NotesEditor
           ref="editorRef"
           :key="editorKey"
@@ -343,9 +364,5 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onSaveShortcut))
 
 .panel {
   margin-bottom: 2.25rem;
-}
-.notes-panel {
-  border-top: 1px solid var(--border);
-  padding-top: 1.25rem;
 }
 </style>
