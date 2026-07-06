@@ -154,3 +154,15 @@ button {
 .milkdown .ProseMirror > :first-child {
   margin-top: 0;
 }
+
+/* ---- Code blocks: soft rounded border, no active-line highlight ---- */
+.milkdown .milkdown-code-block {
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+}
+
+/* Drop CodeMirror's default active-line highlight. */
+.milkdown .cm-activeLine,
+.milkdown .cm-activeLineGutter {
+  background: transparent;
+}
