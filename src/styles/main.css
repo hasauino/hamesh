@@ -1,0 +1,110 @@
+/* ---- App theme tokens ---- */
+:root,
+:root[data-theme='light'] {
+  --bg: #ffffff;
+  --text: #1a1a1a;
+  --muted: #6b6b6b;
+  --faint: #b0b0b0;
+  --border: #ececec;
+  --border-subtle: #f4f4f4;
+  --hover: #f4f4f4;
+  --input-focus: #f2f2f2;
+}
+
+:root[data-theme='dark'] {
+  --bg: #1a1a1a;
+  --text: #e6e6e6;
+  --muted: #9a9a9a;
+  --faint: #5c5c5c;
+  --border: #2c2c2c;
+  --border-subtle: #242424;
+  --hover: #262626;
+  --input-focus: #262626;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica,
+    Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button {
+  font-family: inherit;
+}
+
+/* ---- Milkdown Crepe theme variables (we supply these ourselves so we can
+       drive light/dark from the same [data-theme] attribute) ---- */
+.milkdown {
+  --crepe-color-background: var(--bg);
+  --crepe-color-on-background: var(--text);
+  --crepe-color-surface: var(--bg);
+  --crepe-color-surface-low: #f7f7f7;
+  --crepe-color-on-surface: #1c1c1c;
+  --crepe-color-on-surface-variant: #4d4d4d;
+  --crepe-color-outline: #cfcfcf;
+  --crepe-color-primary: #333333;
+  --crepe-color-secondary: #e2e2e2;
+  --crepe-color-on-secondary: #1a1a1a;
+  --crepe-color-inverse: #f0f0f0;
+  --crepe-color-on-inverse: #1a1a1a;
+  --crepe-color-inline-code: #c0392b;
+  --crepe-color-error: #c0392b;
+  --crepe-color-hover: #f0f0f0;
+  --crepe-color-selected: #e6e6e6;
+  --crepe-color-inline-area: #eaeaea;
+
+  --crepe-font-title: var(--crepe-font-default);
+  --crepe-font-default: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    Helvetica, Arial, sans-serif;
+  --crepe-font-code: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo,
+    Courier, monospace;
+
+  --crepe-shadow-1: 0 1px 3px rgba(0, 0, 0, 0.1);
+  --crepe-shadow-2: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+:root[data-theme='dark'] .milkdown {
+  --crepe-color-background: var(--bg);
+  --crepe-color-on-background: var(--text);
+  --crepe-color-surface: #202020;
+  --crepe-color-surface-low: #1c1c1c;
+  --crepe-color-on-surface: #d1d1d1;
+  --crepe-color-on-surface-variant: #a9a9a9;
+  --crepe-color-outline: #3a3a3a;
+  --crepe-color-primary: #cfcfcf;
+  --crepe-color-secondary: #333333;
+  --crepe-color-on-secondary: #d6d6d6;
+  --crepe-color-inverse: #2a2a2a;
+  --crepe-color-on-inverse: #e5e5e5;
+  --crepe-color-inline-code: #ff7b72;
+  --crepe-color-error: #ff7b72;
+  --crepe-color-hover: #262626;
+  --crepe-color-selected: #2f2f2f;
+  --crepe-color-inline-area: #2b2b2b;
+
+  --crepe-shadow-1: 0 1px 3px rgba(0, 0, 0, 0.5);
+  --crepe-shadow-2: 0 2px 8px rgba(0, 0, 0, 0.55);
+}
+
+/* Trim Crepe's default editor padding so it lines up with the rest of the page. */
+.milkdown .ProseMirror {
+  padding: 0;
+}
+.milkdown .ProseMirror > :first-child {
+  margin-top: 0;
+}
