@@ -1,11 +1,14 @@
 /**
- * Build the full markdown document: a title followed by the notes markdown.
- * Time-log tables now live inside the notes themselves (as widgets that
- * serialize to GFM tables), so there's nothing to merge in separately.
+ * Build the full markdown document: a title, the day's time-log table (as GFM),
+ * then the notes markdown. The log and notes are separate structured data, so
+ * they're merged here for export.
  */
-export function buildMarkdown({ date, notes }) {
+export function buildMarkdown({ date, log, notes }) {
   const lines = []
   if (date) lines.push(`# ${date}`, '')
+
+  const trimmedLog = (log || '').trim()
+  if (trimmedLog) lines.push(trimmedLog, '')
 
   const trimmedNotes = (notes || '').trim()
   if (trimmedNotes) lines.push(trimmedNotes, '')

@@ -2,18 +2,8 @@
 import { onMounted, onBeforeUnmount, ref } from 'vue'
 import { Crepe } from '@milkdown/crepe'
 import { codeBlockConfig } from '@milkdown/kit/component/code-block'
-import { commandsCtx } from '@milkdown/kit/core'
-import {
-  addBlockTypeCommand,
-  clearTextInCurrentBlockCommand,
-} from '@milkdown/kit/preset/commonmark'
 import { emojiPlugins } from '../lib/emojiPlugin.js'
 import { kbdPlugins } from '../lib/kbdPlugin.js'
-import { timeLogPlugins, timeLogNode } from '../lib/timeLogNode.js'
-
-// Clock face — used both for the slash-menu item and matching the in-table button.
-const clockIcon =
-  '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>'
 
 const props = defineProps({
   // Initial markdown. Only read once on mount — the editor owns state after that.
@@ -32,28 +22,8 @@ onMounted(async () => {
       [Crepe.Feature.Placeholder]: {
         text: '',
       },
-      // Add "Time log" to the slash menu's advanced group. Mirrors how the
-      // built-in Table item inserts its block.
-      [Crepe.Feature.BlockEdit]: {
-        buildMenu: (builder) => {
-          builder.getGroup('advanced').addItem('time-log', {
-            label: 'Time log',
-            icon: clockIcon,
-            onRun: (ctx) => {
-              const commands = ctx.get(commandsCtx)
-              commands.call(clearTextInCurrentBlockCommand.key)
-              commands.call(addBlockTypeCommand.key, {
-                nodeType: timeLogNode.type(ctx),
-              })
-            },
-          })
-        },
-      },
     },
   })
-
-  // Register the time-log widget (node + markdown round-trip + node view).
-  crepe.editor.use(timeLogPlugins)
 
   // Math (LaTeX) blocks start collapsed to just their rendered preview; the
   // source is revealed on focus (see the click handler below + main.css).

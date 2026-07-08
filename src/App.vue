@@ -3,11 +3,16 @@ import { ref, reactive, watch, computed, onMounted, onBeforeUnmount } from 'vue'
 import NotesEditor from './components/NotesEditor.vue'
 import Calendar from './components/Calendar.vue'
 import SettingsView from './components/SettingsView.vue'
+import TimeTable from './components/TimeTable.vue'
 import { buildMarkdown, downloadMarkdown } from './lib/exportMarkdown.js'
-import { buildTimeLogTableMarkdown } from './lib/timeLogNode.js'
+import {
+  buildTimeLogTableMarkdown,
+  extractTimeLogFromMarkdown,
+} from './lib/timeLogMarkdown.js'
 import { clockFormat as sharedClockFormat } from './lib/settings.js'
 
-const STORAGE_KEY = 'notes-app-days-v2'
+const STORAGE_KEY = 'notes-app-days-v3'
+const V2_STORAGE_KEY = 'notes-app-days-v2' // one markdown blob per day (table embedded)
 const V1_STORAGE_KEY = 'notes-app-days-v1' // time table stored separately from notes
 const OLD_STORAGE_KEY = 'notes-app-v1' // original single-day format
 const THEME_KEY = 'notes-theme'
@@ -26,17 +31,23 @@ function labelForIso(iso) {
   return `${iso} · ${weekday}`
 }
 
-function blankDay(iso) {
-  return { label: labelForIso(iso), notes: '' }
+function blankRow() {
+  return { start: '', end: '', comment: '' }
 }
 
-function isEmptyDay(day) {
-  if (!day) return true
-  return !(day.notes && day.notes.trim())
+function freshNoteId() {
+  return 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7)
 }
 
-// Fold a legacy day's separate `rows` into its notes markdown as a time-log
-// table, which the editor re-hydrates into the interactive widget on load.
+// A new, empty day: one blank log row + a link to a notes document.
+function newDayObject(iso, noteId) {
+  return { label: labelForIso(iso), logRows: [blankRow()], noteId }
+}
+
+// ---- Migration: unfold a v2 day's embedded time-log table ------------------
+
+// Fold a legacy day's separate `rows` into its notes markdown (v1/old -> v2),
+// which extractTimeLogFromMarkdown then lifts back out during the v2 -> v3 split.
 function foldRowsIntoNotes(day) {
   const rows = day.rows || []
   const hasRows = rows.some((r) => r.start || r.end || r.comment)
@@ -49,25 +60,35 @@ function foldRowsIntoNotes(day) {
   return { label: day.label, notes }
 }
 
-// ---- Load persisted state (synchronously, before the editor mounts) ----
-// Storage shape: { days: { "YYYY-MM-DD": { label, notes } }, current }
-function loadStore() {
+// Split a v2 day ({label, notes}) into a v3 day + its own notes document, which
+// is recorded into `notesOut`. Each legacy day was independent, so each gets a
+// fresh note doc.
+function splitV2Day(iso, day, notesOut) {
+  const { rows, notes } = extractTimeLogFromMarkdown(day.notes || '')
+  const noteId = freshNoteId()
+  notesOut[noteId] = { content: notes }
+  return {
+    label: day.label || labelForIso(iso),
+    logRows: rows.length ? rows : [blankRow()],
+    noteId,
+  }
+}
+
+// Collapse whichever legacy format is present into a v2-shaped day map
+// ({ days: { iso: { label, notes } }, current }), or null if none exists.
+function loadLegacyV2Days() {
   try {
-    const s = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null')
-    if (s && s.days) return s
+    const v2 = JSON.parse(localStorage.getItem(V2_STORAGE_KEY) || 'null')
+    if (v2 && v2.days) return v2
   } catch {}
-  // Migrate the previous multi-day format (rows stored apart from notes).
   try {
     const v1 = JSON.parse(localStorage.getItem(V1_STORAGE_KEY) || 'null')
     if (v1 && v1.days) {
       const days = {}
-      for (const [iso, day] of Object.entries(v1.days)) {
-        days[iso] = foldRowsIntoNotes(day)
-      }
+      for (const [iso, day] of Object.entries(v1.days)) days[iso] = foldRowsIntoNotes(day)
       return { days, current: v1.current }
     }
   } catch {}
-  // Migrate the original single-day format, if present.
   try {
     const old = JSON.parse(localStorage.getItem(OLD_STORAGE_KEY) || 'null')
     if (old) {
@@ -81,22 +102,84 @@ function loadStore() {
       return { days: { [iso]: day }, current: iso }
     }
   } catch {}
+  return null
+}
+
+// ---- Load persisted state (synchronously, before the editor mounts) ----
+// Storage shape: { days: { iso: { label, logRows, noteId } }, notes: { id: { content } }, current }
+function loadStore() {
+  try {
+    const s = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null')
+    if (s && s.days && s.notes) return s
+  } catch {}
+  // Migrate whichever legacy format exists into the split (log + notes) shape.
+  const legacy = loadLegacyV2Days()
+  if (legacy) {
+    const days = {}
+    const notes = {}
+    for (const [iso, day] of Object.entries(legacy.days)) {
+      days[iso] = splitV2Day(iso, day, notes)
+    }
+    return { days, notes, current: legacy.current }
+  }
+  // Fresh install.
   const iso = isoOf()
-  return { days: { [iso]: blankDay(iso) }, current: iso }
+  const id = freshNoteId()
+  return { days: { [iso]: newDayObject(iso, id) }, notes: { [id]: { content: '' } }, current: iso }
 }
 
 const store = reactive(loadStore())
+if (!store.notes) store.notes = {}
 
-// On open, show today's log (create a blank one in memory if it doesn't exist).
+// ---- Note documents & days -------------------------------------------------
+
+function ensureNote(id) {
+  if (!store.notes[id]) store.notes[id] = { content: '' }
+}
+
+// The chronologically-previous existing day, used to continue its notes.
+function latestDayBefore(iso) {
+  let best = null
+  for (const k of Object.keys(store.days)) {
+    if (k < iso && (best === null || k > best)) best = k
+  }
+  return best
+}
+
+// Ensure a day exists. New days continue the previous day's notes by default.
+function ensureDay(iso) {
+  if (store.days[iso]) {
+    ensureNote(store.days[iso].noteId)
+    return
+  }
+  const prev = latestDayBefore(iso)
+  const noteId = prev ? store.days[prev].noteId : freshNoteId()
+  ensureNote(noteId)
+  store.days[iso] = newDayObject(iso, noteId)
+}
+
+// On open, show today's log (creating it, continuing the latest notes if any).
 const todayIso = isoOf()
-if (!store.days[todayIso]) store.days[todayIso] = blankDay(todayIso)
+ensureDay(todayIso)
 store.current = todayIso
 
 // The currently-open day. Editing its fields mutates storage directly.
 const current = computed(() => store.days[store.current])
 
-// Days that should appear on the calendar: anything with content, plus the
-// day that's currently open (so an in-progress blank day is still selectable).
+function dayHasLog(day) {
+  return !!day && Array.isArray(day.logRows) && day.logRows.some((r) => r.start || r.end || r.comment)
+}
+function noteContentOf(day) {
+  const n = day && store.notes[day.noteId]
+  return n && n.content ? n.content.trim() : ''
+}
+function isEmptyDay(day) {
+  if (!day) return true
+  return !dayHasLog(day) && !noteContentOf(day)
+}
+
+// Days that should appear on the calendar: anything with a log or notes, plus
+// the day that's currently open (so an in-progress blank day is still selectable).
 const logDays = computed(() => {
   const set = new Set()
   for (const iso of Object.keys(store.days)) {
@@ -107,16 +190,38 @@ const logDays = computed(() => {
 
 // View toggle: 'log' (the editor), 'calendar' (day picker), or 'settings'.
 const view = ref('log')
-
-// editorKey forces a remount of the WYSIWYG editor when we switch days.
-const editorKey = ref(0)
 const editorRef = ref(null)
 
 function openDay(iso) {
-  if (!store.days[iso]) store.days[iso] = blankDay(iso)
+  ensureDay(iso)
   store.current = iso
-  editorKey.value++ // remount editor with the new day's notes
   view.value = 'log'
+}
+
+// The notes document of the chronologically-previous day, if any.
+const prevNoteId = computed(() => {
+  const prev = latestDayBefore(store.current)
+  return prev ? store.days[prev].noteId : null
+})
+
+// True when the current day is on its own notes doc while a previous day's thread
+// exists to rejoin — i.e. "Start fresh" is in effect and can be toggled back.
+const canContinuePrevious = computed(
+  () => !!prevNoteId.value && current.value.noteId !== prevNoteId.value,
+)
+
+// Break the current day off into a new, empty notes document (days before it
+// keep the previous thread). The editor is keyed by noteId, so it remounts empty.
+function startFreshNotes() {
+  const id = freshNoteId()
+  store.notes[id] = { content: '' }
+  current.value.noteId = id
+}
+
+// Rejoin the previous day's notes thread (the fresh doc, if now unused, is
+// garbage-collected on the next save).
+function continuePreviousNotes() {
+  if (prevNoteId.value) current.value.noteId = prevNoteId.value
 }
 
 // ---- Theme ----
@@ -152,13 +257,20 @@ function persist() {
     for (const iso of Object.keys(store.days)) {
       if (iso !== store.current && isEmptyDay(store.days[iso])) delete store.days[iso]
     }
+    // Garbage-collect notes documents no day references any more.
+    const referenced = new Set(Object.values(store.days).map((d) => d.noteId))
+    for (const id of Object.keys(store.notes)) {
+      if (!referenced.has(id)) delete store.notes[id]
+    }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(store))
   }, 250)
 }
 watch(store, persist, { deep: true })
 
 function onNotesChange(markdown) {
-  current.value.notes = markdown
+  const id = current.value.noteId
+  ensureNote(id)
+  store.notes[id].content = markdown
 }
 
 // ---- Export ----
@@ -170,9 +282,13 @@ function showFlash(msg) {
 
 function currentMarkdown() {
   // Pull the freshest notes straight from the editor.
-  const md = editorRef.value?.getMarkdown() ?? current.value.notes
+  const md = editorRef.value?.getMarkdown() ?? noteContentOf(current.value)
+  const log = dayHasLog(current.value)
+    ? buildTimeLogTableMarkdown(current.value.logRows, clockFormat.value)
+    : ''
   return buildMarkdown({
     date: current.value.label,
+    log,
     notes: md,
   })
 }
@@ -282,11 +398,41 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onSaveShortcut))
     </main>
 
     <main v-show="view === 'log'">
-      <section class="panel">
+      <section class="panel log-panel">
+        <TimeTable v-model="current.logRows" :clock-format="clockFormat" />
+      </section>
+      <section class="panel notes-panel">
+        <div class="notes-header">
+          <span class="notes-title">Notes</span>
+          <button
+            v-if="canContinuePrevious"
+            class="fresh-notes"
+            @click="continuePreviousNotes"
+            title="Continue the previous day's notes"
+            aria-label="Continue previous notes"
+          >
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+              stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path
+              d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path
+              d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg>
+          </button>
+          <button
+            v-else
+            class="fresh-notes"
+            @click="startFreshNotes"
+            title="Start fresh notes for this day onward"
+            aria-label="Start fresh notes"
+          >
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+              stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path
+              d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z" /><path
+              d="M14 2v6h6" /><path d="M12 18v-6" /><path d="M9 15h6" /></svg>
+          </button>
+        </div>
         <NotesEditor
           ref="editorRef"
-          :key="editorKey"
-          :initial-value="current.notes"
+          :key="current.noteId"
+          :initial-value="store.notes[current.noteId]?.content || ''"
           @change="onNotesChange"
         />
       </section>
@@ -373,5 +519,41 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onSaveShortcut))
 
 .panel {
   margin-bottom: 2.25rem;
+}
+.log-panel {
+  margin-bottom: 2.75rem;
+}
+
+.notes-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+.notes-title {
+  font-size: 0.78rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.fresh-notes {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  padding: 0.35rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.fresh-notes:hover {
+  background: var(--hover);
+  color: var(--text);
 }
 </style>
