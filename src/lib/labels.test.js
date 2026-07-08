@@ -1,5 +1,52 @@
 import { describe, it, expect } from 'vitest'
-import { extractLabels, buildLabelIndex } from './labels.js'
+import {
+  extractLabels,
+  buildLabelIndex,
+  serializeLabel,
+  splitLabelText,
+} from './labels.js'
+
+describe('serializeLabel', () => {
+  it('uses a bare token when there are no spaces or hashes', () => {
+    expect(serializeLabel('PROJ-123')).toBe('#PROJ-123')
+    expect(serializeLabel('feature/auth')).toBe('#feature/auth')
+  })
+
+  it('uses the brace form for spaces or a literal hash', () => {
+    expect(serializeLabel('Sign in flow')).toBe('#{Sign in flow}')
+    expect(serializeLabel('C# notes')).toBe('#{C# notes}')
+  })
+})
+
+describe('splitLabelText', () => {
+  it('splits a run into ordered text/label parts', () => {
+    expect(splitLabelText('on #PROJ-1 now')).toEqual([
+      { text: 'on ' },
+      { label: 'PROJ-1' },
+      { text: ' now' },
+    ])
+  })
+
+  it('handles a leading label and a brace label', () => {
+    expect(splitLabelText('#standup then #{Sign in flow}')).toEqual([
+      { label: 'standup' },
+      { text: ' then ' },
+      { label: 'Sign in flow' },
+    ])
+  })
+
+  it('returns a single text part when there is no label', () => {
+    expect(splitLabelText('just some text')).toEqual([{ text: 'just some text' }])
+  })
+
+  it('round-trips through serializeLabel', () => {
+    const parts = splitLabelText('fix #{Sign in flow} for #PROJ-1')
+    const rebuilt = parts
+      .map((p) => (p.label ? serializeLabel(p.label) : p.text))
+      .join('')
+    expect(rebuilt).toBe('fix #{Sign in flow} for #PROJ-1')
+  })
+})
 
 describe('extractLabels', () => {
   it('extracts single-token labels', () => {

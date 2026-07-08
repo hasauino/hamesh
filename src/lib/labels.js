@@ -10,11 +10,12 @@
 // is *derived* by scanning note content, keeping a single source of truth. No
 // Vue/Milkdown dependencies here so it stays trivial to unit-test.
 
-// A leading `#` at a word boundary, then either a `{multi word}` group or a
-// single token. The (?:^|\s) guard (mirrors emojiPlugin's) keeps mid-word `#`
-// from matching, so `C#` and `foo#bar` are left alone. Multi-word alternative is
-// listed first so `#{...}` wins over the single-token branch.
-const LABEL_SOURCE = '(?:^|\\s)#(?:\\{([^}\\n]{1,60})\\}|([A-Za-z0-9][A-Za-z0-9_/-]*))'
+// A `#` at a word boundary, then either a `{multi word}` group or a single
+// token. The `(?<!\S)` guard keeps mid-word `#` from matching, so `C#` and
+// `foo#bar` are left alone — and, unlike a `(?:^|\s)` prefix, it doesn't consume
+// the preceding character, so matches can be sliced out of text cleanly. The
+// multi-word alternative is listed first so `#{...}` wins over the single token.
+const LABEL_SOURCE = '(?<!\\S)#(?:\\{([^}\\n]{1,60})\\}|([A-Za-z0-9][A-Za-z0-9_/-]*))'
 
 // A fresh global regex per call — global regexes carry mutable lastIndex state,
 // so sharing one instance across callers would be a bug.
@@ -26,6 +27,33 @@ export function labelRegex() {
 export function labelFromMatch(match) {
   const raw = match[1] !== undefined ? match[1] : match[2]
   return raw.trim()
+}
+
+// Serialize a label value back to its markdown token: the brace form when it
+// contains a space or `#`, otherwise a bare `#token`. Inverse of a match.
+export function serializeLabel(value) {
+  return /[\s#]/.test(value) ? `#{${value}}` : `#${value}`
+}
+
+/**
+ * Split a plain string into an ordered list of `{ text }` / `{ label }` parts,
+ * e.g. "on #PROJ-1 now" -> [{text:'on '}, {label:'PROJ-1'}, {text:' now'}].
+ * Used by the editor's remark transform to turn `#tag` runs into label nodes.
+ */
+export function splitLabelText(text) {
+  const parts = []
+  const re = labelRegex()
+  let last = 0
+  let m
+  while ((m = re.exec(text)) !== null) {
+    const label = labelFromMatch(m)
+    if (!label) continue
+    if (m.index > last) parts.push({ text: text.slice(last, m.index) })
+    parts.push({ label })
+    last = m.index + m[0].length
+  }
+  if (last < text.length) parts.push({ text: text.slice(last) })
+  return parts
 }
 
 /**

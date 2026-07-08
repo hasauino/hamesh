@@ -1,83 +1,127 @@
-// Hashtag "labels" for the Milkdown editor:
-//   • chips        — `#PROJ-123` / `#{Sign in flow}` render as styled pills
-//   • autocomplete — typing `#que` opens a menu of existing labels to pick from
+// Hashtag "labels" for the Milkdown editor, as a proper inline **atom node**:
+//   • a label renders as a chip showing only its text — the `#`/`{}` markup is
+//     never editable text, so the caret moves cleanly *around* the chip (an
+//     earlier decoration-based version fought contenteditable and mangled the
+//     caret when typing after a `#{…}` tag).
+//   • markdown round-trips: `#PROJ-123` / `#{Sign in flow}` <-> a label node.
+//   • autocomplete: typing `#que` opens a menu of existing labels to pick from.
 //
-// Chips are render-only *decorations*: the underlying markdown stays exactly
-// `#tag`, so labels round-trip, export, and stay searchable (see labels.js).
-// This differs deliberately from kbdPlugin's mark, which rewrites the text.
-//
-// The autocomplete is a near-clone of emojiPlugin's menu (query detection +
-// floating menu + keyboard nav), sourcing its suggestions from labelStore's
-// shared `allLabels` ref. Exposes `labelPlugins` for `editor.use(...)`.
+// The node is text in the markdown (see labels.js), so labels stay searchable.
+// Modeled on kbdPlugin (remark transform + schema round-trip) and emojiPlugin
+// (the autocomplete menu). Exposes `labelPlugins` for `editor.use(...)`.
 
-import { $prose } from '@milkdown/utils'
+import { $nodeSchema, $inputRule, $remark, $prose } from '@milkdown/kit/utils'
+import { InputRule } from '@milkdown/kit/prose/inputrules'
 import { Plugin, PluginKey } from '@milkdown/prose/state'
-import { Decoration, DecorationSet } from '@milkdown/prose/view'
-import { labelRegex, labelFromMatch } from './labels.js'
+import {
+  labelRegex,
+  labelFromMatch,
+  serializeLabel,
+  splitLabelText,
+} from './labels.js'
 import { allLabels } from './labelStore.js'
 
 const MAX_RESULTS = 8
 
-// ---- Chip decorations: render every `#tag` as a pill ----
-// The `#` and `{}` syntax chars are hidden (this is a WYSIWYG editor) — but only
-// while the cursor is *outside* the token, so clicking into a chip reveals the
-// raw markup for editing. The underlying markdown always stays literal `#tag`.
-function buildDecorations(doc, selection) {
-  const decos = []
-  doc.descendants((node, pos) => {
-    if (!node.isText || !node.text) return
-    // Leave inline-code spans as literal text.
-    if (node.marks.some((m) => m.type.name === 'code')) return
-    const re = labelRegex()
-    let m
-    while ((m = re.exec(node.text)) !== null) {
-      if (!labelFromMatch(m)) continue
-      // The match may include a leading boundary char; anchor on the `#`.
-      const from = pos + m.index + m[0].indexOf('#')
-      const to = pos + m.index + m[0].length
-
-      // Reveal `#`/`{}` while the cursor sits within the token so it's editable.
-      if (selection.from < to && selection.to > from) {
-        decos.push(Decoration.inline(from, to, { class: 'label-chip' }))
+// ---- remark: split `#tag` runs in text into `label` mdast nodes ----
+// On the reverse trip a `label` node stringifies straight to its markdown token
+// (bypassing text escaping, so a leading `#` isn't turned into `\#`).
+function splitLabelsInTree(node) {
+  if (!Array.isArray(node.children)) return
+  const next = []
+  for (const child of node.children) {
+    if (child.type === 'text' && typeof child.value === 'string') {
+      const parts = splitLabelText(child.value)
+      // No label found (or a single text part): keep the node untouched.
+      if (parts.length <= 1 && !(parts[0] && parts[0].label)) {
+        next.push(child)
         continue
       }
-
-      if (m[1] !== undefined) {
-        // Brace form `#{…}`: the pill wraps only up to the inner text — the
-        // closing `}` is a hidden span *outside* the chip, so once the tag is
-        // closed the caret (at `to`) renders outside the pill and typed text
-        // lands after it, not inside the tag.
-        decos.push(Decoration.inline(from, to - 1, { class: 'label-chip' }))
-        decos.push(Decoration.inline(from, from + 2, { class: 'label-syntax' }))
-        decos.push(Decoration.inline(to - 1, to, { class: 'label-syntax' }))
-      } else {
-        // Single-token `#tag`: hide the leading `#`.
-        decos.push(Decoration.inline(from, to, { class: 'label-chip' }))
-        decos.push(Decoration.inline(from, from + 1, { class: 'label-syntax' }))
+      for (const part of parts) {
+        if (part.label) next.push({ type: 'label', value: part.label })
+        else if (part.text) next.push({ type: 'text', value: part.text })
       }
+    } else {
+      splitLabelsInTree(child) // recurse into emphasis/strong/headings/etc.
+      next.push(child)
     }
-  })
-  return DecorationSet.create(doc, decos)
+  }
+  node.children = next
 }
 
-const labelDecorations = $prose(
-  () =>
-    new Plugin({
-      key: new PluginKey('MILKDOWN_LABEL_DECORATIONS'),
-      props: {
-        decorations(state) {
-          return buildDecorations(state.doc, state.selection)
-        },
-      },
-    }),
+const labelToMarkdown = {
+  handlers: {
+    // `value` is the label text; emit the raw token, unescaped.
+    label: (node) => serializeLabel(node.value),
+  },
+}
+
+const labelRemark = $remark('label', () =>
+  function labelAttacher() {
+    const data = this.data()
+    ;(data.toMarkdownExtensions || (data.toMarkdownExtensions = [])).push(
+      labelToMarkdown,
+    )
+    return (tree) => splitLabelsInTree(tree)
+  },
 )
 
-// ---- Autocomplete menu ----
-// Find an open `#query` immediately before the cursor. The `#` must sit at the
-// start of the block or after whitespace so we don't fire inside `C#`/`foo#bar`.
-// Query chars mirror the single-token label grammar (letters/digits/_-/ + a
-// space so an in-progress multi-word label keeps matching).
-const queryRegex = /(?:^|\s)#([A-Za-z0-9][A-Za-z0-9_/ -]*)?$/
+// ---- label node: an inline atom chip, `#tag` in markdown ----
+const labelSchema = $nodeSchema('label', () => ({
+  group: 'inline',
+  inline: true,
+  atom: true,
+  selectable: true,
+  attrs: { value: { default: '' } },
+  parseDOM: [
+    {
+      tag: 'span[data-label]',
+      getAttrs: (dom) => ({ value: dom.getAttribute('data-label') || '' }),
+    },
+  ],
+  toDOM: (node) => [
+    'span',
+    { 'data-label': node.attrs.value, class: 'label-chip' },
+    node.attrs.value,
+  ],
+  parseMarkdown: {
+    match: (node) => node.type === 'label',
+    runner: (state, node, type) => {
+      state.addNode(type, { value: node.value })
+    },
+  },
+  toMarkdown: {
+    match: (node) => node.type.name === 'label',
+    runner: (state, node) => {
+      state.addNode('label', undefined, node.attrs.value)
+    },
+  },
+}))
+
+// ---- Live rendering: typing a complete label becomes a chip ----
+// `#{multi word}` fires when the closing brace is typed; a single `#token` fires
+// on the following whitespace (which is re-inserted after the chip). A label
+// typed with no trailing char still converts on reload via the remark transform.
+const braceInputRule = $inputRule((ctx) =>
+  new InputRule(/(?<!\S)#\{([^}\n]{1,60})\}$/, (state, match, start, end) => {
+    const value = match[1].trim()
+    if (!value) return null
+    return state.tr.replaceRangeWith(start, end, labelSchema.type(ctx).create({ value }))
+  }),
+)
+
+const tokenInputRule = $inputRule((ctx) =>
+  new InputRule(/(?<!\S)#([A-Za-z0-9][A-Za-z0-9_/-]*)(\s)$/, (state, match, start, end) => {
+    const node = labelSchema.type(ctx).create({ value: match[1] })
+    return state.tr.replaceRangeWith(start, end, node).insertText(match[2])
+  }),
+)
+
+// ---- Autocomplete menu (mirrors emojiPlugin) ----
+// Find an open `#query` immediately before the cursor. `(?<!\S)` keeps it from
+// firing inside `C#`/`foo#bar`; the space in the class lets an in-progress
+// multi-word label keep matching.
+const queryRegex = /(?<!\S)#([A-Za-z0-9][A-Za-z0-9_/ -]*)?$/
 
 function getLabelQuery(state) {
   const { $from, empty } = state.selection
@@ -91,12 +135,6 @@ function getLabelQuery(state) {
   const to = $from.pos
   const from = to - query.length - 1 // include the leading `#`
   return { query, from, to }
-}
-
-// A label with a space or `#` needs the `#{...}` brace form; otherwise a plain
-// `#tag`.
-function insertionText(label) {
-  return /[\s#]/.test(label) ? `#{${label}}` : `#${label}`
 }
 
 class LabelMenuView {
@@ -180,7 +218,10 @@ class LabelMenuView {
   select(item) {
     if (!this.range) return
     const { from, to } = this.range
-    const tr = this.editorView.state.tr.insertText(insertionText(item), from, to)
+    const type = this.editorView.state.schema.nodes.label
+    const node = type.create({ value: item })
+    // Insert the chip then a trailing space so the caret continues after it.
+    const tr = this.editorView.state.tr.replaceRangeWith(from, to, node).insertText(' ')
     this.editorView.dispatch(tr)
     this.editorView.focus()
     this.hide()
@@ -229,4 +270,10 @@ const labelMenu = $prose(() => {
   })
 })
 
-export const labelPlugins = [labelDecorations, labelMenu]
+export const labelPlugins = [
+  labelRemark,
+  labelSchema,
+  braceInputRule,
+  tokenInputRule,
+  labelMenu,
+]

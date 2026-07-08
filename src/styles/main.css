@@ -222,8 +222,8 @@ button {
   white-space: nowrap;
 }
 
-/* ---- Labels: `#tag` / `#{multi word}` rendered as an inline pill ---- */
-/* Render-only decoration — the underlying markdown stays literal `#tag`. */
+/* ---- Labels: `#tag` / `#{multi word}` rendered as an inline chip ---- */
+/* An atom node showing only the label text; markdown keeps the raw `#tag`. */
 .milkdown .ProseMirror .label-chip {
   padding: 0.05em 0.4em;
   border-radius: 5px;
@@ -231,13 +231,11 @@ button {
   font-weight: 600;
   color: #ff3b30;
   background: rgba(255, 59, 48, 0.1);
+  white-space: nowrap;
+  cursor: default;
 }
 :root[data-theme='dark'] .milkdown .ProseMirror .label-chip {
   background: rgba(255, 59, 48, 0.16);
-}
-/* The `#` / `{}` markup is hidden unless the cursor is inside the tag. */
-.milkdown .ProseMirror .label-syntax {
-  display: none;
 }
 
 /* ---- Code blocks: soft rounded border, no active-line highlight ---- */
