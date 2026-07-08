@@ -8,6 +8,7 @@ import {
   clearTextInCurrentBlockCommand,
 } from '@milkdown/kit/preset/commonmark'
 import { emojiPlugins } from '../lib/emojiPlugin.js'
+import { kbdPlugins } from '../lib/kbdPlugin.js'
 import { timeLogPlugins, timeLogNode } from '../lib/timeLogNode.js'
 
 // Clock face — used both for the slash-menu item and matching the in-table button.
@@ -65,6 +66,9 @@ onMounted(async () => {
 
   // Add markdown emoji support (`:dart:` autocomplete + live rendering).
   crepe.editor.use(emojiPlugins)
+
+  // Add `<kbd>ctrl</kbd>` keyboard-key support (Typora-compatible).
+  crepe.editor.use(kbdPlugins)
 
   crepe.on((listener) => {
     listener.markdownUpdated((_ctx, markdown) => {
