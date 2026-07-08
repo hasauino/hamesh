@@ -3,7 +3,10 @@ import { ref, reactive, watch, computed, onMounted, onBeforeUnmount } from 'vue'
 import NotesEditor from './components/NotesEditor.vue'
 import Calendar from './components/Calendar.vue'
 import SettingsView from './components/SettingsView.vue'
+import SearchView from './components/SearchView.vue'
 import TimeTable from './components/TimeTable.vue'
+import { buildLabelIndex } from './lib/labels.js'
+import { allLabels } from './lib/labelStore.js'
 import { buildMarkdown, downloadMarkdown } from './lib/exportMarkdown.js'
 import {
   buildTimeLogTableMarkdown,
@@ -188,9 +191,19 @@ const logDays = computed(() => {
   return set
 })
 
-// View toggle: 'log' (the editor), 'calendar' (day picker), or 'settings'.
+// View toggle: 'log' (the editor), 'calendar' (day picker), 'search', or 'settings'.
 const view = ref('log')
 const editorRef = ref(null)
+
+// ---- Labels ----
+// Derived from the note markdown (labels are literal `#tag` text). Feeds both
+// the search view and, via the shared `allLabels` ref, the editor autocomplete.
+const labelIndex = computed(() => buildLabelIndex(store))
+watch(
+  labelIndex,
+  (idx) => (allLabels.value = idx.map((e) => e.label)),
+  { immediate: true },
+)
 
 function openDay(iso) {
   ensureDay(iso)
@@ -350,6 +363,17 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onSaveShortcut))
         </button>
         <button
           class="icon"
+          :class="{ active: view === 'search' }"
+          @click="view = view === 'search' ? 'log' : 'search'"
+          title="Search labels"
+          aria-label="Search"
+        >
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11"
+            r="7" /><path d="m21 21-4.3-4.3" /></svg>
+        </button>
+        <button
+          class="icon"
           :class="{ active: view === 'calendar' }"
           @click="view = view === 'calendar' ? 'log' : 'calendar'"
           title="Browse all days"
@@ -383,6 +407,15 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onSaveShortcut))
       <SettingsView
         v-model:theme="theme"
         v-model:clockFormat="clockFormat"
+        @close="view = 'log'"
+      />
+    </main>
+
+    <main v-show="view === 'search'">
+      <SearchView
+        :index="labelIndex"
+        :today="todayIso"
+        @select="openDay"
         @close="view = 'log'"
       />
     </main>

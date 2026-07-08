@@ -4,6 +4,7 @@ import { Crepe } from '@milkdown/crepe'
 import { codeBlockConfig } from '@milkdown/kit/component/code-block'
 import { emojiPlugins } from '../lib/emojiPlugin.js'
 import { kbdPlugins } from '../lib/kbdPlugin.js'
+import { labelPlugins } from '../lib/labelPlugin.js'
 
 const props = defineProps({
   // Initial markdown. Only read once on mount — the editor owns state after that.
@@ -39,6 +40,9 @@ onMounted(async () => {
 
   // Add `<kbd>ctrl</kbd>` keyboard-key support (Typora-compatible).
   crepe.editor.use(kbdPlugins)
+
+  // Add `#label` hashtag support (chips + existing-label autocomplete).
+  crepe.editor.use(labelPlugins)
 
   crepe.on((listener) => {
     listener.markdownUpdated((_ctx, markdown) => {
