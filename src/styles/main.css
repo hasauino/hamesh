@@ -150,6 +150,11 @@ button {
 /* Trim Crepe's default editor padding so it lines up with the rest of the page. */
 .milkdown .ProseMirror {
   padding: 0;
+  /* Extend the editable region down to (roughly) the bottom of the viewport so
+     clicking the empty space below the last line still places the cursor,
+     instead of landing on non-editable page area. Accounts for the app's top
+     padding + topbar + panel margin above, and its 6rem bottom padding. */
+  min-height: calc(100vh - 12rem);
 }
 .milkdown .ProseMirror > :first-child {
   margin-top: 0;
