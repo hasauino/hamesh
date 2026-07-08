@@ -2,9 +2,9 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { VitePWA } from 'vite-plugin-pwa'
 
-export default defineConfig(({ command }) => ({
-  // Served from https://hasauino.github.io/hamesh/ on GitHub Pages.
-  base: command === 'build' ? '/hamesh/' : '/',
+export default defineConfig(() => ({
+  // Served from https://hamesh.dev/ (custom domain) on GitHub Pages.
+  base: '/',
   plugins: [
     vue(),
     VitePWA({
