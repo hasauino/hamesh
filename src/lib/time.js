@@ -36,12 +36,13 @@ export function rowMinutes(start, end) {
 /**
  * Parse loosely-typed user input into a canonical 24h "HH:MM" string, or null.
  * Accepts: "13:33", "9:05", "0905", "905", "9", "1305", "9:05pm", "9pm",
- * "12am" (-> 00:00), "12pm" (-> 12:00).
+ * "12am" (-> 00:00), "12pm" (-> 12:00), and "now" (-> current wall-clock time).
  */
 export function parseFlexibleTime(input) {
   if (input === null || input === undefined) return null
   let s = String(input).trim().toLowerCase()
   if (s === '') return null
+  if (s === 'now') return nowHHMM()
 
   let pm = null
   if (s.includes('am')) {

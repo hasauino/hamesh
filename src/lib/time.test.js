@@ -7,6 +7,7 @@ import {
   formatDuration,
   formatDecimalHours,
   totalMinutes,
+  nowHHMM,
 } from './time.js'
 
 describe('parseTime', () => {
@@ -44,10 +45,17 @@ describe('parseFlexibleTime', () => {
   it('canonicalizes loose input', () => {
     expect(parseFlexibleTime('905')).toBe('09:05')
     expect(parseFlexibleTime('1305')).toBe('13:05')
+    expect(parseFlexibleTime('2000')).toBe('20:00')
     expect(parseFlexibleTime('9')).toBe('09:00')
     expect(parseFlexibleTime('9:05pm')).toBe('21:05')
     expect(parseFlexibleTime('12am')).toBe('00:00')
     expect(parseFlexibleTime('12pm')).toBe('12:00')
+  })
+
+  it('resolves "now" to the current wall-clock time', () => {
+    expect(parseFlexibleTime('now')).toBe(nowHHMM())
+    expect(parseFlexibleTime('NOW')).toBe(nowHHMM())
+    expect(parseFlexibleTime('  now ')).toBe(nowHHMM())
   })
 
   it('returns null for empty or invalid input', () => {

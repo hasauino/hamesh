@@ -53,7 +53,8 @@ const timePlaceholder = computed(() =>
   props.clockFormat === '12h' ? 'h:mm am' : 'hh:mm',
 )
 
-// The live row prompts with "now"; other empty cells show the format hint.
+// The live row prompts with "now" (its duration/total keep ticking every
+// minute); other empty cells show the format hint.
 function endPlaceholder(row, i) {
   return isLive(row, i) ? 'now' : timePlaceholder.value
 }
@@ -66,6 +67,13 @@ function display(value) {
 // text back to the configured display format (reverting unparseable input).
 function commit(row, field, event) {
   const raw = event.target.value
+  // "now" in the End field re-engages the live state (blank end on the last row
+  // counts up minute-by-minute) rather than freezing a fixed timestamp.
+  if (field === 'end' && raw.trim().toLowerCase() === 'now') {
+    row.end = ''
+    event.target.value = ''
+    return
+  }
   if (raw.trim() === '') {
     row[field] = ''
   } else {
