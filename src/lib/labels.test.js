@@ -60,6 +60,24 @@ describe('buildLabelIndex', () => {
     expect(other.days).toEqual(['2026-07-08'])
   })
 
+  it('indexes labels from time-log comments against their own day', () => {
+    const store = {
+      days: {
+        '2026-07-08': {
+          noteId: 'n1',
+          logRows: [
+            { start: '09:00', end: '10:00', comment: 'standup for #PROJ-123' },
+            { start: '10:00', end: '11:00', comment: 'no tag here' },
+          ],
+        },
+      },
+      notes: { n1: { content: 'plain notes' } },
+    }
+    const index = buildLabelIndex(store)
+    const proj = index.find((e) => e.label === 'PROJ-123')
+    expect(proj.days).toEqual(['2026-07-08'])
+  })
+
   it('sorts labels case-insensitively and ignores orphan notes', () => {
     const store = {
       days: { '2026-07-08': { noteId: 'n1' } },

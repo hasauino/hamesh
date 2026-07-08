@@ -50,38 +50,48 @@ export function extractLabels(md) {
 }
 
 /**
- * Build the label index over the whole store. A label found in a note document
- * resolves to the *earliest* day referencing that note (a note thread can span
- * multiple days — we surface the day it started).
+ * Build the label index over the whole store. Labels come from two places:
+ *   • note markdown       — resolves to the *earliest* day referencing that note
+ *                           (a note thread can span multiple days — we surface
+ *                           the day it started).
+ *   • time-log comments   — resolves to that specific day (a row belongs to one).
  *
- * Returns [{ label, days }] where `days` are representative first-days sorted
+ * Returns [{ label, days }] where `days` are representative days sorted
  * newest-first, and the list is sorted by label (case-insensitive).
  */
 export function buildLabelIndex(store) {
   const days = (store && store.days) || {}
   const notes = (store && store.notes) || {}
 
-  // noteId -> earliest iso referencing it.
+  // label (lowercased key) -> { label: display, days: Set<iso> }
+  const byLabel = new Map()
+  const add = (label, iso) => {
+    const key = label.toLowerCase()
+    let entry = byLabel.get(key)
+    if (!entry) {
+      entry = { label, days: new Set() }
+      byLabel.set(key, entry)
+    }
+    entry.days.add(iso)
+  }
+
+  // Notes: labels resolve to the earliest day of the note thread.
   const firstDayOfNote = {}
   for (const [iso, day] of Object.entries(days)) {
     const id = day && day.noteId
     if (!id) continue
     if (!firstDayOfNote[id] || iso < firstDayOfNote[id]) firstDayOfNote[id] = iso
   }
-
-  // label (lowercased key) -> { label: display, days: Set<iso> }
-  const byLabel = new Map()
   for (const [id, note] of Object.entries(notes)) {
     const firstDay = firstDayOfNote[id]
     if (!firstDay) continue // orphan note doc, no day references it
-    for (const label of extractLabels(note && note.content)) {
-      const key = label.toLowerCase()
-      let entry = byLabel.get(key)
-      if (!entry) {
-        entry = { label, days: new Set() }
-        byLabel.set(key, entry)
-      }
-      entry.days.add(firstDay)
+    for (const label of extractLabels(note && note.content)) add(label, firstDay)
+  }
+
+  // Time-log comments: labels resolve to the day whose row carries them.
+  for (const [iso, day] of Object.entries(days)) {
+    for (const row of (day && day.logRows) || []) {
+      for (const label of extractLabels(row && row.comment)) add(label, iso)
     }
   }
 

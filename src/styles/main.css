@@ -235,6 +235,10 @@ button {
 :root[data-theme='dark'] .milkdown .ProseMirror .label-chip {
   background: rgba(255, 59, 48, 0.16);
 }
+/* The `#` / `{}` markup is hidden unless the cursor is inside the tag. */
+.milkdown .ProseMirror .label-syntax {
+  display: none;
+}
 
 /* ---- Code blocks: soft rounded border, no active-line highlight ---- */
 .milkdown .milkdown-code-block {

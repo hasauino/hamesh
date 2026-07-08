@@ -18,8 +18,11 @@ import { allLabels } from './labelStore.js'
 
 const MAX_RESULTS = 8
 
-// ---- Chip decorations: paint every `#tag` in the doc with a class ----
-function buildDecorations(doc) {
+// ---- Chip decorations: render every `#tag` as a pill ----
+// The `#` and `{}` syntax chars are hidden (this is a WYSIWYG editor) — but only
+// while the cursor is *outside* the token, so clicking into a chip reveals the
+// raw markup for editing. The underlying markdown always stays literal `#tag`.
+function buildDecorations(doc, selection) {
   const decos = []
   doc.descendants((node, pos) => {
     if (!node.isText || !node.text) return
@@ -30,11 +33,28 @@ function buildDecorations(doc) {
     while ((m = re.exec(node.text)) !== null) {
       if (!labelFromMatch(m)) continue
       // The match may include a leading boundary char; anchor on the `#`.
-      const startInText = m.index + m[0].indexOf('#')
-      const endInText = m.index + m[0].length
-      decos.push(
-        Decoration.inline(pos + startInText, pos + endInText, { class: 'label-chip' }),
-      )
+      const from = pos + m.index + m[0].indexOf('#')
+      const to = pos + m.index + m[0].length
+
+      // Reveal `#`/`{}` while the cursor sits within the token so it's editable.
+      if (selection.from < to && selection.to > from) {
+        decos.push(Decoration.inline(from, to, { class: 'label-chip' }))
+        continue
+      }
+
+      if (m[1] !== undefined) {
+        // Brace form `#{…}`: the pill wraps only up to the inner text — the
+        // closing `}` is a hidden span *outside* the chip, so once the tag is
+        // closed the caret (at `to`) renders outside the pill and typed text
+        // lands after it, not inside the tag.
+        decos.push(Decoration.inline(from, to - 1, { class: 'label-chip' }))
+        decos.push(Decoration.inline(from, from + 2, { class: 'label-syntax' }))
+        decos.push(Decoration.inline(to - 1, to, { class: 'label-syntax' }))
+      } else {
+        // Single-token `#tag`: hide the leading `#`.
+        decos.push(Decoration.inline(from, to, { class: 'label-chip' }))
+        decos.push(Decoration.inline(from, from + 1, { class: 'label-syntax' }))
+      }
     }
   })
   return DecorationSet.create(doc, decos)
@@ -46,7 +66,7 @@ const labelDecorations = $prose(
       key: new PluginKey('MILKDOWN_LABEL_DECORATIONS'),
       props: {
         decorations(state) {
-          return buildDecorations(state.doc)
+          return buildDecorations(state.doc, state.selection)
         },
       },
     }),
