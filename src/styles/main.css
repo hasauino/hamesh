@@ -187,6 +187,21 @@ button {
   margin: 1.25rem 0;
 }
 
+/* The widget is an atom node, so ProseMirror gives it the selected-node grey
+   highlight when it's inserted/clicked. It's an interactive form, not a picked
+   object — suppress the highlight so it reads like a plain table. */
+.milkdown .ProseMirror .ProseMirror-selectednode.time-log-widget {
+  background: transparent;
+  outline: none;
+}
+
+/* Its cells are ordinary inputs; keep a visible text caret and I-beam so editing
+   feels like typing in a normal markdown table. */
+.milkdown .time-log-widget input {
+  caret-color: var(--text);
+  cursor: text;
+}
+
 /* ---- Code blocks: soft rounded border, no active-line highlight ---- */
 .milkdown .milkdown-code-block {
   border: 1px solid var(--border-subtle);

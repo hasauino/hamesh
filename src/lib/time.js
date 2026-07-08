@@ -1,5 +1,13 @@
 // Time helpers. Times are "HH:MM" 24h strings (as produced by <input type="time">).
 
+/** Current wall-clock time as a canonical "HH:MM" 24h string. */
+export function nowHHMM() {
+  const d = new Date()
+  return `${String(d.getHours()).padStart(2, '0')}:${String(
+    d.getMinutes(),
+  ).padStart(2, '0')}`
+}
+
 /** Parse "HH:MM" -> minutes since midnight, or null if invalid/empty. */
 export function parseTime(value) {
   if (!value || typeof value !== 'string') return null

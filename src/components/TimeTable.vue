@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import {
   rowMinutes,
   formatDuration,
@@ -7,6 +7,7 @@ import {
   totalMinutes,
   formatTime,
   parseFlexibleTime,
+  nowHHMM,
 } from '../lib/time.js'
 
 // rows is v-model bound: array of { start, end, comment }
@@ -18,11 +19,44 @@ const props = defineProps({
   clockFormat: { type: String, default: '24h' },
 })
 
-const total = computed(() => totalMinutes(rows.value))
+const lastIndex = computed(() => rows.value.length - 1)
 
-const placeholder = computed(() =>
+// The last row is the "live" one: while its end is still blank it counts up from
+// its start to the current time. Only that row shows the "now" placeholder, so
+// two rows can never both be "now". Every other blank end is just blank.
+function isLive(row, i) {
+  return !row.end && i === lastIndex.value
+}
+function effectiveEnd(row, i) {
+  return row.end || (isLive(row, i) ? nowHHMM() : '')
+}
+
+// Ticks every minute so the live row's duration (and the total) keeps advancing.
+// Reading `tick` inside the reactive getters below is what registers the dep.
+const tick = ref(0)
+let timer = null
+onMounted(() => {
+  timer = setInterval(() => {
+    tick.value++
+  }, 60_000)
+})
+onUnmounted(() => clearInterval(timer))
+
+const total = computed(() => {
+  tick.value // re-evaluate on each minute while a row is live
+  return totalMinutes(
+    rows.value.map((r, i) => ({ start: r.start, end: effectiveEnd(r, i) })),
+  )
+})
+
+const timePlaceholder = computed(() =>
   props.clockFormat === '12h' ? 'h:mm am' : 'hh:mm',
 )
+
+// The live row prompts with "now"; other empty cells show the format hint.
+function endPlaceholder(row, i) {
+  return isLive(row, i) ? 'now' : timePlaceholder.value
+}
 
 function display(value) {
   return formatTime(value, props.clockFormat)
@@ -41,24 +75,22 @@ function commit(row, field, event) {
   event.target.value = display(row[field])
 }
 
-function nowHHMM() {
-  const d = new Date()
-  return `${String(d.getHours()).padStart(2, '0')}:${String(
-    d.getMinutes(),
-  ).padStart(2, '0')}`
-}
-
-// Stamp the current time into a field.
+// Stamp the current time into a field (e.g. freezing the live end to a fixed time).
 function stampNow(row, field) {
   row[field] = nowHHMM()
 }
 
-function durationFor(row) {
-  return formatDuration(rowMinutes(row.start, row.end))
+function durationFor(row, i) {
+  tick.value // re-evaluate on each minute while this row is live
+  return formatDuration(rowMinutes(row.start, effectiveEnd(row, i)))
+}
+
+function blankRow() {
+  return { start: '', end: '', comment: '' }
 }
 
 function addRow() {
-  rows.value.push({ start: '', end: '', comment: '' })
+  rows.value.push(blankRow())
 }
 
 function removeRow(index) {
@@ -95,7 +127,7 @@ async function copyTotal() {
                 type="text"
                 class="time-input"
                 inputmode="numeric"
-                :placeholder="placeholder"
+                :placeholder="timePlaceholder"
                 :value="display(row.start)"
                 @change="commit(row, 'start', $event)"
                 @keyup.enter="$event.target.blur()"
@@ -116,8 +148,9 @@ async function copyTotal() {
               <input
                 type="text"
                 class="time-input"
+                :class="{ 'is-now': isLive(row, i) }"
                 inputmode="numeric"
-                :placeholder="placeholder"
+                :placeholder="endPlaceholder(row, i)"
                 :value="display(row.end)"
                 @change="commit(row, 'end', $event)"
                 @keyup.enter="$event.target.blur()"
@@ -133,7 +166,7 @@ async function copyTotal() {
               </button>
             </div>
           </td>
-          <td class="dur">{{ durationFor(row) }}</td>
+          <td class="dur">{{ durationFor(row, i) }}</td>
           <td>
             <input
               type="text"
@@ -206,6 +239,13 @@ td {
   flex: 1;
   min-width: 0;
   font-variant-numeric: tabular-nums;
+}
+/* The live row's "now" prompt reads italic/visible (not faint like a normal
+   placeholder) to signal it's actively counting up. */
+.time-input.is-now::placeholder {
+  color: var(--muted);
+  font-style: italic;
+  opacity: 1;
 }
 
 .clock-btn {

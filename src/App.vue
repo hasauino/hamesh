@@ -2,7 +2,7 @@
 import { ref, reactive, watch, computed, onMounted, onBeforeUnmount } from 'vue'
 import NotesEditor from './components/NotesEditor.vue'
 import Calendar from './components/Calendar.vue'
-import SettingsMenu from './components/SettingsMenu.vue'
+import SettingsView from './components/SettingsView.vue'
 import { buildMarkdown, downloadMarkdown } from './lib/exportMarkdown.js'
 import { buildTimeLogTableMarkdown } from './lib/timeLogNode.js'
 import { clockFormat as sharedClockFormat } from './lib/settings.js'
@@ -105,7 +105,7 @@ const logDays = computed(() => {
   return set
 })
 
-// View toggle: 'log' (the editor) or 'calendar' (day picker).
+// View toggle: 'log' (the editor), 'calendar' (day picker), or 'settings'.
 const view = ref('log')
 
 // editorKey forces a remount of the WYSIWYG editor when we switch days.
@@ -118,9 +118,6 @@ function openDay(iso) {
   editorKey.value++ // remount editor with the new day's notes
   view.value = 'log'
 }
-
-// ---- Settings drawer ----
-const settingsOpen = ref(false)
 
 // ---- Theme ----
 const theme = ref(localStorage.getItem(THEME_KEY) || 'light')
@@ -246,7 +243,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onSaveShortcut))
             stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4"
             width="18" height="18" rx="2" /><path d="M3 10h18" /><path d="M8 2v4" /><path d="M16 2v4" /></svg>
         </button>
-        <button class="icon" @click="settingsOpen = true" title="Settings" aria-label="Settings">
+        <button
+          class="icon"
+          :class="{ active: view === 'settings' }"
+          @click="view = view === 'settings' ? 'log' : 'settings'"
+          title="Settings"
+          aria-label="Settings"
+        >
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
             stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12"
             r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65
@@ -260,7 +263,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onSaveShortcut))
       </div>
     </header>
 
-    <SettingsMenu v-model:open="settingsOpen" v-model:theme="theme" v-model:clockFormat="clockFormat" />
+    <main v-show="view === 'settings'">
+      <SettingsView
+        v-model:theme="theme"
+        v-model:clockFormat="clockFormat"
+        @close="view = 'log'"
+      />
+    </main>
 
     <main v-show="view === 'calendar'">
       <Calendar
